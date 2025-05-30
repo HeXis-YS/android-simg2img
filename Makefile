@@ -15,13 +15,12 @@
 #
 PREFIX  ?= /usr/local
 
-CXX      ?= g++
-LD       ?= g++
-DEP_CXX  ?= $(CXX)
-AR       ?= ar
-RANLIB   ?= ranlib
-STRIP    ?= strip
-CPPFLAGS += -std=gnu++17 -O2 -W -Wall -Werror -Wextra \
+CXX      = g++
+LD       = g++
+DEP_CXX  = $(CXX)
+AR       = gcc-ar
+RANLIB   = ranlib
+CPPFLAGS += -std=gnu++17 -Os -flto -flto-partition=none -ffunction-sections -fdata-sections -W -Wall -Werror -Wextra \
     -D__STDC_FORMAT_MACROS -D__STDC_CONSTANT_MACROS
 
 # libsparse
@@ -38,7 +37,7 @@ LIB_SRCS = \
 LIB_OBJS = $(LIB_SRCS:%.cpp=%.o)
 LIB_INCS = -Iinclude -Iandroid-base/include
 
-LDFLAGS += -L. -l$(LIB_NAME) -lm
+LDFLAGS += -L. -l$(LIB_NAME) -lm -s -Wl,-O2,--gc-sections -static
 
 BINS = simg2img simg2simg img2simg append2simg
 HEADERS = include/sparse/sparse.h
