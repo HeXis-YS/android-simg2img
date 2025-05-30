@@ -136,13 +136,13 @@ static int write_all_blocks(struct sparse_file* s, struct output_file* out) {
   return 0;
 }
 
-int sparse_file_write(struct sparse_file* s, int fd, bool gz, bool sparse, bool crc) {
+int sparse_file_write(struct sparse_file* s, int fd, bool sparse, bool crc) {
   int ret;
   int chunks;
   struct output_file* out;
 
   chunks = sparse_count_chunks(s);
-  out = output_file_open_fd(fd, s->block_size, s->len, gz, sparse, chunks, crc);
+  out = output_file_open_fd(fd, s->block_size, s->len, sparse, chunks, crc);
 
   if (!out) return -ENOMEM;
 

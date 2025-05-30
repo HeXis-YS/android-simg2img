@@ -164,7 +164,7 @@ int sparse_file_add_fd(struct sparse_file *s,
  *
  * Returns 0 on success, negative errno on error.
  */
-int sparse_file_write(struct sparse_file *s, int fd, bool gz, bool sparse,
+int sparse_file_write(struct sparse_file *s, int fd, bool sparse,
 		bool crc);
 
 /**

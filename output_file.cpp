@@ -27,7 +27,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <zlib.h>
 
 #include "defs.h"
 #include "output_file.h"
@@ -91,13 +90,6 @@ struct output_file {
   uint32_t* fill_buf;
   char* buf;
 };
-
-struct output_file_gz {
-  struct output_file out;
-  gzFile gz_fd;
-};
-
-#define to_output_file_gz(_o) container_of((_o), struct output_file_gz, out)
 
 struct output_file_normal {
   struct output_file out;
@@ -178,85 +170,6 @@ static struct output_file_ops file_ops = {
     .pad = file_pad,
     .write = file_write,
     .close = file_close,
-};
-
-static int gz_file_open(struct output_file* out, int fd) {
-  struct output_file_gz* outgz = to_output_file_gz(out);
-
-  outgz->gz_fd = gzdopen(fd, "wb9");
-  if (!outgz->gz_fd) {
-    error_errno("gzopen");
-    return -errno;
-  }
-
-  return 0;
-}
-
-static int gz_file_skip(struct output_file* out, int64_t cnt) {
-  off64_t ret;
-  struct output_file_gz* outgz = to_output_file_gz(out);
-
-  ret = gzseek(outgz->gz_fd, cnt, SEEK_CUR);
-  if (ret < 0) {
-    error_errno("gzseek");
-    return -1;
-  }
-  return 0;
-}
-
-static int gz_file_pad(struct output_file* out, int64_t len) {
-  off64_t ret;
-  struct output_file_gz* outgz = to_output_file_gz(out);
-
-  ret = gztell(outgz->gz_fd);
-  if (ret < 0) {
-    return -1;
-  }
-
-  if (ret >= len) {
-    return 0;
-  }
-
-  ret = gzseek(outgz->gz_fd, len - 1, SEEK_SET);
-  if (ret < 0) {
-    return -1;
-  }
-
-  gzwrite(outgz->gz_fd, "", 1);
-
-  return 0;
-}
-
-static int gz_file_write(struct output_file* out, void* data, size_t len) {
-  int ret;
-  struct output_file_gz* outgz = to_output_file_gz(out);
-
-  while (len > 0) {
-    ret = gzwrite(outgz->gz_fd, data, min(len, (unsigned int)INT_MAX));
-    if (ret == 0) {
-      error("gzwrite %s", gzerror(outgz->gz_fd, nullptr));
-      return -1;
-    }
-    len -= ret;
-    data = (char*)data + ret;
-  }
-
-  return 0;
-}
-
-static void gz_file_close(struct output_file* out) {
-  struct output_file_gz* outgz = to_output_file_gz(out);
-
-  gzclose(outgz->gz_fd);
-  free(outgz);
-}
-
-static struct output_file_ops gz_file_ops = {
-    .open = gz_file_open,
-    .skip = gz_file_skip,
-    .pad = gz_file_pad,
-    .write = gz_file_write,
-    .close = gz_file_close,
 };
 
 static int callback_file_open(struct output_file* out __unused, int fd __unused) {
@@ -564,19 +477,6 @@ err_fill_buf:
   return ret;
 }
 
-static struct output_file* output_file_new_gz(void) {
-  struct output_file_gz* outgz =
-      reinterpret_cast<struct output_file_gz*>(calloc(1, sizeof(struct output_file_gz)));
-  if (!outgz) {
-    error_errno("malloc struct outgz");
-    return nullptr;
-  }
-
-  outgz->out.ops = &gz_file_ops;
-
-  return &outgz->out;
-}
-
 static struct output_file* output_file_new_normal(void) {
   struct output_file_normal* outn =
       reinterpret_cast<struct output_file_normal*>(calloc(1, sizeof(struct output_file_normal)));
@@ -616,16 +516,13 @@ struct output_file* output_file_open_callback(int (*write)(void*, const void*, s
   return &outc->out;
 }
 
-struct output_file* output_file_open_fd(int fd, unsigned int block_size, int64_t len, int gz,
+struct output_file* output_file_open_fd(int fd, unsigned int block_size, int64_t len,
                                         int sparse, int chunks, int crc) {
   int ret;
   struct output_file* out;
 
-  if (gz) {
-    out = output_file_new_gz();
-  } else {
-    out = output_file_new_normal();
-  }
+  out = output_file_new_normal();
+
   if (!out) {
     return nullptr;
   }

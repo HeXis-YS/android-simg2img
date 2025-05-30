@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
       exit(EXIT_FAILURE);
     }
 
-    if (sparse_file_write(s, out, false, false, false) < 0) {
+    if (sparse_file_write(s, out, false, false) < 0) {
       fprintf(stderr, "Cannot write output file\n");
       exit(-1);
     }

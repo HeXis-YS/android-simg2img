@@ -38,7 +38,7 @@ LIB_SRCS = \
 LIB_OBJS = $(LIB_SRCS:%.cpp=%.o)
 LIB_INCS = -Iinclude -Iandroid-base/include
 
-LDFLAGS += -L. -l$(LIB_NAME) -lm -lz
+LDFLAGS += -L. -l$(LIB_NAME) -lm
 
 BINS = simg2img simg2simg img2simg append2simg
 HEADERS = include/sparse/sparse.h

@@ -21,18 +21,9 @@ Windows
 -------
 
 If you want to build simg2img on Windows you'll need to [install MinGW](http://www.mingw.org/wiki/howto_install_the_mingw_gcc_compiler_suite)
-and also zlib and libasprintf (go to MinGW Libraries in the installer and check `mingw32-libz` and `mingw32-libasprintf`).
+and also libasprintf (go to MinGW Libraries in the installer and check `mingw32-libasprintf`).
 Once you've done that run the following command to build simg2img:
 
 ```
 CFLAGS=-DUSE_MINGW LDFLAGS=-lasprintf mingw32-make
 ```
-
-Linux
-------
-
-If zlib.h is missing then install it using
-
-Ubuntu: ```sudo apt-get install libz-dev```
-
-Fedora: ```sudo dnf install libz-devel```

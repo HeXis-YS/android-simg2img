@@ -112,7 +112,7 @@ int main(int argc, char* argv[]) {
   }
 
   lseek64(output, 0, SEEK_SET);
-  if (sparse_file_write(sparse_output, tmp_fd, false, true, false) < 0) {
+  if (sparse_file_write(sparse_output, tmp_fd, true, false) < 0) {
     fprintf(stderr, "Failed to write sparse file\n");
     exit(-1);
   }

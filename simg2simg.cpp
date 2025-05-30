@@ -97,7 +97,7 @@ int main(int argc, char* argv[]) {
       exit(-1);
     }
 
-    ret = sparse_file_write(out_s[i], out, false, true, false);
+    ret = sparse_file_write(out_s[i], out, true, false);
     if (ret) {
       fprintf(stderr, "Failed to write sparse file\n");
       exit(-1);
