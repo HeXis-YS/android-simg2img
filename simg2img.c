@@ -16,7 +16,6 @@
 
 #include "ext4_utils.h"
 #include "sparse_format.h"
-#include "sparse_crc32.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -129,7 +128,7 @@ static int skip_output(int fd, u64 len)
         return len;
 }
 
-int process_raw_chunk(int in, int out, u32 blocks, u32 blk_sz, u32 *crc32)
+int process_raw_chunk(int in, int out, u32 blocks, u32 blk_sz)
 {
 	u64 len = (u64)blocks * blk_sz;
 	int ret;
@@ -143,7 +142,6 @@ int process_raw_chunk(int in, int out, u32 blocks, u32 blk_sz, u32 *crc32)
 					ret, chunk);
 			exit(-1);
 		}
-		*crc32 = sparse_crc32(*crc32, copybuf, chunk);
 		ret = write_all(out, copybuf, chunk);
 		if (ret != chunk) {
 			fprintf(stderr, "write returned an error copying a raw chunk\n");
@@ -156,7 +154,7 @@ int process_raw_chunk(int in, int out, u32 blocks, u32 blk_sz, u32 *crc32)
 }
 
 
-int process_fill_chunk(int in, int out, u32 blocks, u32 blk_sz, u32 *crc32)
+int process_fill_chunk(int in, int out, u32 blocks, u32 blk_sz)
 {
 	u64 len = (u64)blocks * blk_sz;
 	int ret;
@@ -174,7 +172,6 @@ int process_fill_chunk(int in, int out, u32 blocks, u32 blk_sz, u32 *crc32)
 
 	while (len) {
 		chunk = (len > COPY_BUF_SIZE) ? COPY_BUF_SIZE : len;
-		*crc32 = sparse_crc32(*crc32, copybuf, chunk);
 		ret = write_all(out, copybuf, chunk);
 		if (ret != chunk) {
 			fprintf(stderr, "write returned an error copying a raw chunk\n");
@@ -186,7 +183,7 @@ int process_fill_chunk(int in, int out, u32 blocks, u32 blk_sz, u32 *crc32)
 	return blocks;
 }
 
-int process_skip_chunk(int out, u32 blocks, u32 blk_sz, u32 *crc32)
+int process_skip_chunk(int out, u32 blocks, u32 blk_sz)
 {
 	/* len needs to be 64 bits, as the sparse file specifies the skip amount
 	 * as a 32 bit value of blocks.
@@ -198,26 +195,6 @@ int process_skip_chunk(int out, u32 blocks, u32 blk_sz, u32 *crc32)
 	return blocks;
 }
 
-int process_crc32_chunk(int in, u32 crc32)
-{
-	u32 file_crc32;
-	int ret;
-
-	ret = read_all(in, &file_crc32, 4);
-	if (ret != 4) {
-		fprintf(stderr, "read returned an error copying a crc32 chunk\n");
-		exit(-1);
-	}
-
-	if (file_crc32 != crc32) {
-		fprintf(stderr, "computed crc32 of 0x%8.8x, expected 0x%8.8x\n",
-			 crc32, file_crc32);
-		exit(-1);
-	}
-
-	return 0;
-}
-
 int main(int argc, char *argv[])
 {
 	int in;
@@ -225,7 +202,6 @@ int main(int argc, char *argv[])
 	unsigned int i;
 	sparse_header_t sparse_header;
 	chunk_header_t chunk_header;
-	u32 crc32 = 0;
 	u32 total_blocks = 0;
 	int ret;
 
@@ -307,7 +283,7 @@ int main(int argc, char *argv[])
 				exit(-1);
 			}
 			total_blocks += process_raw_chunk(in, out,
-					 chunk_header.chunk_sz, sparse_header.blk_sz, &crc32);
+					 chunk_header.chunk_sz, sparse_header.blk_sz);
 			break;
 		    case CHUNK_TYPE_FILL:
 			if (chunk_header.total_sz != (sparse_header.chunk_hdr_sz + sizeof(u32)) ) {
@@ -315,7 +291,7 @@ int main(int argc, char *argv[])
 				exit(-1);
 			}
 			total_blocks += process_fill_chunk(in, out,
-					 chunk_header.chunk_sz, sparse_header.blk_sz, &crc32);
+					 chunk_header.chunk_sz, sparse_header.blk_sz);
 			break;
 		    case CHUNK_TYPE_DONT_CARE:
 			if (chunk_header.total_sz != sparse_header.chunk_hdr_sz) {
@@ -323,10 +299,7 @@ int main(int argc, char *argv[])
 				exit(-1);
 			}
 			total_blocks += process_skip_chunk(out,
-					 chunk_header.chunk_sz, sparse_header.blk_sz, &crc32);
-			break;
-		    case CHUNK_TYPE_CRC32:
-			process_crc32_chunk(in, crc32);
+					 chunk_header.chunk_sz, sparse_header.blk_sz);
 			break;
 		    default:
 			fprintf(stderr, "Unknown chunk type 0x%4.4x\n", chunk_header.chunk_type);
