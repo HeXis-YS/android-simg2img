@@ -14,22 +14,57 @@
  * limitations under the License.
  */
 
-#include "ext4_utils.h"
-#include "sparse_format.h"
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#define _FILE_OFFSET_BITS 64
+#define _LARGEFILE64_SOURCE 1
 
-#include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/mman.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+typedef struct sparse_header {
+  uint32_t	magic;		/* 0xED26FF3A */
+  uint16_t	major_version;	/* (0x1) - reject images with higher major versions */
+  uint16_t	minor_version;	/* (0x0) - allow images with higer minor versions */
+  uint16_t	file_hdr_sz;	/* 28 bytes for first revision of the file format */
+  uint16_t	chunk_hdr_sz;	/* 12 bytes for first revision of the file format */
+  uint32_t	blk_sz;		/* block size in bytes, must be a multiple of 4 (4096) */
+  uint32_t	total_blks;	/* total blocks in the non-sparse output image */
+  uint32_t	total_chunks;	/* total chunks in the sparse input image */
+  uint32_t	image_checksum; /* CRC32 checksum of the original data, counting "don't care" */
+				/* as 0. Standard 802.3 polynomial, use a Public Domain */
+				/* table implementation */
+} sparse_header_t;
+
+#define SPARSE_HEADER_MAGIC	0xED26FF3A
+
+#define CHUNK_TYPE_RAW		0xCAC1
+#define CHUNK_TYPE_FILL		0xCAC2
+#define CHUNK_TYPE_DONT_CARE	0xCAC3
+
+typedef struct chunk_header {
+  uint16_t	chunk_type;	/* 0xCAC1 -> raw; 0xCAC2 -> fill; 0xCAC3 -> don't care */
+  uint16_t	reserved1;
+  uint32_t	chunk_sz;	/* in blocks in output image */
+  uint32_t	total_sz;	/* in bytes of chunk input file including chunk header and data */
+} chunk_header_t;
+
+/* Following a Raw or Fill chunk is data.
+ *  For a Raw chunk, it's the data in chunk_sz * blk_sz.
+ *  For a Fill chunk, it's 4 bytes of the fill data.
+ */
 
 #define COPY_BUF_SIZE (1024*1024)
-u8 *copybuf;
+uint8_t *copybuf;
 
 /* This will be malloc'ed with the size of blk_sz from the sparse file header */
-u8* zerobuf;
+uint8_t* zerobuf;
 
 #define SPARSE_HEADER_MAJOR_VER 1
 #define SPARSE_HEADER_LEN       (sizeof(sparse_header_t))
@@ -84,7 +119,7 @@ static int write_all(int fd, void *buf, size_t len)
 	return total;
 }
 
-static int skip_all(int fd, u64 len, int (*iofunc)(int, void *, size_t))
+static int skip_all(int fd, uint64_t len, int (*iofunc)(int, void *, size_t))
 {
         int ret;
 
@@ -98,7 +133,7 @@ static int skip_all(int fd, u64 len, int (*iofunc)(int, void *, size_t))
         return 0;
 }
 
-static int skip_input(int fd, u64 len)
+static int skip_input(int fd, uint64_t len)
 {
         if (lseek64(fd, len, SEEK_CUR) >= 0) {
                 return len;
@@ -112,7 +147,7 @@ static int skip_input(int fd, u64 len)
         return len;
 }
 
-static int skip_output(int fd, u64 len)
+static int skip_output(int fd, uint64_t len)
 {
         if (lseek64(fd, len, SEEK_CUR) >= 0) {
                 return len;
@@ -128,9 +163,9 @@ static int skip_output(int fd, u64 len)
         return len;
 }
 
-int process_raw_chunk(int in, int out, u32 blocks, u32 blk_sz)
+int process_raw_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz)
 {
-	u64 len = (u64)blocks * blk_sz;
+	uint64_t len = (uint64_t)blocks * blk_sz;
 	int ret;
 	int chunk;
 
@@ -154,18 +189,18 @@ int process_raw_chunk(int in, int out, u32 blocks, u32 blk_sz)
 }
 
 
-int process_fill_chunk(int in, int out, u32 blocks, u32 blk_sz)
+int process_fill_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz)
 {
-	u64 len = (u64)blocks * blk_sz;
+	uint64_t len = (uint64_t)blocks * blk_sz;
 	int ret;
 	int chunk;
-	u32 fill_val;
-	u32 *fillbuf;
+	uint32_t fill_val;
+	uint32_t *fillbuf;
 	unsigned int i;
 
 	/* Fill copy_buf with the fill value */
 	ret = read_all(in, &fill_val, sizeof(fill_val));
-	fillbuf = (u32 *)copybuf;
+	fillbuf = (uint32_t *)copybuf;
 	for (i = 0; i < (COPY_BUF_SIZE / sizeof(fill_val)); i++) {
 		fillbuf[i] = fill_val;
 	}
@@ -183,12 +218,12 @@ int process_fill_chunk(int in, int out, u32 blocks, u32 blk_sz)
 	return blocks;
 }
 
-int process_skip_chunk(int out, u32 blocks, u32 blk_sz)
+int process_skip_chunk(int out, uint32_t blocks, uint32_t blk_sz)
 {
 	/* len needs to be 64 bits, as the sparse file specifies the skip amount
 	 * as a 32 bit value of blocks.
 	 */
-	u64 len = (u64)blocks * blk_sz;
+	uint64_t len = (uint64_t)blocks * blk_sz;
 
 	skip_output(out, len);
 
@@ -202,7 +237,7 @@ int main(int argc, char *argv[])
 	unsigned int i;
 	sparse_header_t sparse_header;
 	chunk_header_t chunk_header;
-	u32 total_blocks = 0;
+	uint32_t total_blocks = 0;
 	int ret;
 
 	if (argc > 3 || (argc > 1 && strcmp(argv[1], "--help") == 0)) {
@@ -286,7 +321,7 @@ int main(int argc, char *argv[])
 					 chunk_header.chunk_sz, sparse_header.blk_sz);
 			break;
 		    case CHUNK_TYPE_FILL:
-			if (chunk_header.total_sz != (sparse_header.chunk_hdr_sz + sizeof(u32)) ) {
+			if (chunk_header.total_sz != (sparse_header.chunk_hdr_sz + sizeof(uint32_t)) ) {
 				fprintf(stderr, "Bogus chunk size for chunk %d, type Fill\n", i);
 				exit(-1);
 			}
