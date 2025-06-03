@@ -20,39 +20,39 @@
 #define _FILE_OFFSET_BITS 64
 #define _LARGEFILE64_SOURCE 1
 
-#include <sys/stat.h>
-#include <unistd.h>
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 typedef struct sparse_header {
-  uint32_t	magic;		/* 0xED26FF3A */
-  uint16_t	major_version;	/* (0x1) - reject images with higher major versions */
-  uint16_t	minor_version;	/* (0x0) - allow images with higer minor versions */
-  uint16_t	file_hdr_sz;	/* 28 bytes for first revision of the file format */
-  uint16_t	chunk_hdr_sz;	/* 12 bytes for first revision of the file format */
-  uint32_t	blk_sz;		/* block size in bytes, must be a multiple of 4 (4096) */
-  uint32_t	total_blks;	/* total blocks in the non-sparse output image */
-  uint32_t	total_chunks;	/* total chunks in the sparse input image */
-  uint32_t	image_checksum; /* CRC32 checksum of the original data, counting "don't care" */
-				/* as 0. Standard 802.3 polynomial, use a Public Domain */
-				/* table implementation */
+    uint32_t magic;          /* 0xED26FF3A */
+    uint16_t major_version;  /* (0x1) - reject images with higher major versions */
+    uint16_t minor_version;  /* (0x0) - allow images with higer minor versions */
+    uint16_t file_hdr_sz;    /* 28 bytes for first revision of the file format */
+    uint16_t chunk_hdr_sz;   /* 12 bytes for first revision of the file format */
+    uint32_t blk_sz;         /* block size in bytes, must be a multiple of 4 (4096) */
+    uint32_t total_blks;     /* total blocks in the non-sparse output image */
+    uint32_t total_chunks;   /* total chunks in the sparse input image */
+    uint32_t image_checksum; /* CRC32 checksum of the original data, counting "don't care" */
+    /* as 0. Standard 802.3 polynomial, use a Public Domain */
+    /* table implementation */
 } sparse_header_t;
 
-#define SPARSE_HEADER_MAGIC	0xED26FF3A
+#define SPARSE_HEADER_MAGIC 0xED26FF3A
 
-#define CHUNK_TYPE_RAW		0xCAC1
-#define CHUNK_TYPE_FILL		0xCAC2
-#define CHUNK_TYPE_DONT_CARE	0xCAC3
+#define CHUNK_TYPE_RAW 0xCAC1
+#define CHUNK_TYPE_FILL 0xCAC2
+#define CHUNK_TYPE_DONT_CARE 0xCAC3
 
 typedef struct chunk_header {
-  uint16_t	chunk_type;	/* 0xCAC1 -> raw; 0xCAC2 -> fill; 0xCAC3 -> don't care */
-  uint16_t	reserved1;
-  uint32_t	chunk_sz;	/* in blocks in output image */
-  uint32_t	total_sz;	/* in bytes of chunk input file including chunk header and data */
+    uint16_t chunk_type; /* 0xCAC1 -> raw; 0xCAC2 -> fill; 0xCAC3 -> don't care */
+    uint16_t reserved1;
+    uint32_t chunk_sz; /* in blocks in output image */
+    uint32_t total_sz; /* in bytes of chunk input file including chunk header and data */
 } chunk_header_t;
 
 /* Following a Raw or Fill chunk is data.
@@ -60,307 +60,298 @@ typedef struct chunk_header {
  *  For a Fill chunk, it's 4 bytes of the fill data.
  */
 
-#define COPY_BUF_SIZE (1024*1024)
+#define COPY_BUF_SIZE (1024 * 1024)
 uint8_t *copybuf;
 
 /* This will be malloc'ed with the size of blk_sz from the sparse file header */
-uint8_t* zerobuf;
+uint8_t *zerobuf;
 
 #define SPARSE_HEADER_MAJOR_VER 1
-#define SPARSE_HEADER_LEN       (sizeof(sparse_header_t))
+#define SPARSE_HEADER_LEN (sizeof(sparse_header_t))
 #define CHUNK_HEADER_LEN (sizeof(chunk_header_t))
 
-void usage()
-{
-  fprintf(stderr, "Usage: simg2img [sparse_image_file] [raw_image_file]\n");
+void usage() {
+    fprintf(stderr, "Usage: simg2img [sparse_image_file] [raw_image_file]\n");
 }
 
-static int read_all(int fd, void *buf, size_t len)
-{
-	size_t total = 0;
-	int ret;
-	char *ptr = buf;
+static int read_all(int fd, void *buf, size_t len) {
+    size_t total = 0;
+    int ret;
+    char *ptr = buf;
 
-	while (total < len) {
-		ret = read(fd, ptr, len - total);
+    while (total < len) {
+        ret = read(fd, ptr, len - total);
 
-		if (ret < 0)
-			return ret;
-
-		if (ret == 0)
-			return total;
-
-		ptr += ret;
-		total += ret;
-	}
-
-	return total;
-}
-
-static int write_all(int fd, void *buf, size_t len)
-{
-	size_t total = 0;
-	int ret;
-	char *ptr = buf;
-
-	while (total < len) {
-		ret = write(fd, ptr, len - total);
-
-		if (ret < 0)
-			return ret;
-
-		if (ret == 0)
-			return total;
-
-		ptr += ret;
-		total += ret;
-	}
-
-	return total;
-}
-
-static int skip_all(int fd, uint64_t len, int (*iofunc)(int, void *, size_t))
-{
-        int ret;
-
-        while (len > 0) {
-                ret = iofunc(fd, copybuf, len > COPY_BUF_SIZE ? COPY_BUF_SIZE : len);
-                if (ret < 0) {
-                        return -1;
-                }
-                len -= ret;
-        }
-        return 0;
-}
-
-static int skip_input(int fd, uint64_t len)
-{
-        if (lseek64(fd, len, SEEK_CUR) >= 0) {
-                return len;
+        if (ret < 0) {
+            return ret;
         }
 
-        if (skip_all(fd, len, &read_all) < 0) {
-                perror("Could not seek or read to skip input data");
-                exit(-1);
+        if (ret == 0) {
+            return total;
         }
 
+        ptr += ret;
+        total += ret;
+    }
+
+    return total;
+}
+
+static int write_all(int fd, void *buf, size_t len) {
+    size_t total = 0;
+    int ret;
+    char *ptr = buf;
+
+    while (total < len) {
+        ret = write(fd, ptr, len - total);
+
+        if (ret < 0) {
+            return ret;
+        }
+
+        if (ret == 0) {
+            return total;
+        }
+
+        ptr += ret;
+        total += ret;
+    }
+
+    return total;
+}
+
+static int skip_all(int fd, uint64_t len, int (*iofunc)(int, void *, size_t)) {
+    int ret;
+
+    while (len > 0) {
+        ret = iofunc(fd, copybuf, len > COPY_BUF_SIZE ? COPY_BUF_SIZE : len);
+        if (ret < 0) {
+            return -1;
+        }
+        len -= ret;
+    }
+    return 0;
+}
+
+static int skip_input(int fd, uint64_t len) {
+    if (lseek64(fd, len, SEEK_CUR) >= 0) {
         return len;
+    }
+
+    if (skip_all(fd, len, &read_all) < 0) {
+        perror("Could not seek or read to skip input data");
+        exit(-1);
+    }
+
+    return len;
 }
 
-static int skip_output(int fd, uint64_t len)
-{
-        if (lseek64(fd, len, SEEK_CUR) >= 0) {
-                return len;
-        }
-
-        memset(copybuf, 0, len > COPY_BUF_SIZE ? COPY_BUF_SIZE : len);
-
-        if (skip_all(fd, len, &write_all) < 0) {
-                perror("Could not seek or write to skip output data");
-                exit(-1);
-        }
-
+static int skip_output(int fd, uint64_t len) {
+    if (lseek64(fd, len, SEEK_CUR) >= 0) {
         return len;
+    }
+
+    memset(copybuf, 0, len > COPY_BUF_SIZE ? COPY_BUF_SIZE : len);
+
+    if (skip_all(fd, len, &write_all) < 0) {
+        perror("Could not seek or write to skip output data");
+        exit(-1);
+    }
+
+    return len;
 }
 
-int process_raw_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz)
-{
-	uint64_t len = (uint64_t)blocks * blk_sz;
-	int ret;
-	int chunk;
+int process_raw_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz) {
+    uint64_t len = (uint64_t)blocks * blk_sz;
+    int ret;
+    int chunk;
 
-	while (len) {
-		chunk = (len > COPY_BUF_SIZE) ? COPY_BUF_SIZE : len;
-		ret = read_all(in, copybuf, chunk);
-		if (ret != chunk) {
-			fprintf(stderr, "read returned an error copying a raw chunk: %d %d\n",
-					ret, chunk);
-			exit(-1);
-		}
-		ret = write_all(out, copybuf, chunk);
-		if (ret != chunk) {
-			fprintf(stderr, "write returned an error copying a raw chunk\n");
-			exit(-1);
-		}
-		len -= chunk;
-	}
+    while (len) {
+        chunk = (len > COPY_BUF_SIZE) ? COPY_BUF_SIZE : len;
+        ret = read_all(in, copybuf, chunk);
+        if (ret != chunk) {
+            fprintf(stderr, "read returned an error copying a raw chunk: %d %d\n",
+                    ret, chunk);
+            exit(-1);
+        }
+        ret = write_all(out, copybuf, chunk);
+        if (ret != chunk) {
+            fprintf(stderr, "write returned an error copying a raw chunk\n");
+            exit(-1);
+        }
+        len -= chunk;
+    }
 
-	return blocks;
+    return blocks;
 }
 
+int process_fill_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz) {
+    uint64_t len = (uint64_t)blocks * blk_sz;
+    int ret;
+    int chunk;
+    uint32_t fill_val;
+    uint32_t *fillbuf;
+    unsigned int i;
 
-int process_fill_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz)
-{
-	uint64_t len = (uint64_t)blocks * blk_sz;
-	int ret;
-	int chunk;
-	uint32_t fill_val;
-	uint32_t *fillbuf;
-	unsigned int i;
+    /* Fill copy_buf with the fill value */
+    ret = read_all(in, &fill_val, sizeof(fill_val));
+    fillbuf = (uint32_t *)copybuf;
+    for (i = 0; i < (COPY_BUF_SIZE / sizeof(fill_val)); i++) {
+        fillbuf[i] = fill_val;
+    }
 
-	/* Fill copy_buf with the fill value */
-	ret = read_all(in, &fill_val, sizeof(fill_val));
-	fillbuf = (uint32_t *)copybuf;
-	for (i = 0; i < (COPY_BUF_SIZE / sizeof(fill_val)); i++) {
-		fillbuf[i] = fill_val;
-	}
+    while (len) {
+        chunk = (len > COPY_BUF_SIZE) ? COPY_BUF_SIZE : len;
+        ret = write_all(out, copybuf, chunk);
+        if (ret != chunk) {
+            fprintf(stderr, "write returned an error copying a raw chunk\n");
+            exit(-1);
+        }
+        len -= chunk;
+    }
 
-	while (len) {
-		chunk = (len > COPY_BUF_SIZE) ? COPY_BUF_SIZE : len;
-		ret = write_all(out, copybuf, chunk);
-		if (ret != chunk) {
-			fprintf(stderr, "write returned an error copying a raw chunk\n");
-			exit(-1);
-		}
-		len -= chunk;
-	}
-
-	return blocks;
+    return blocks;
 }
 
-int process_skip_chunk(int out, uint32_t blocks, uint32_t blk_sz)
-{
-	/* len needs to be 64 bits, as the sparse file specifies the skip amount
-	 * as a 32 bit value of blocks.
-	 */
-	uint64_t len = (uint64_t)blocks * blk_sz;
+int process_skip_chunk(int out, uint32_t blocks, uint32_t blk_sz) {
+    /* len needs to be 64 bits, as the sparse file specifies the skip amount
+     * as a 32 bit value of blocks.
+     */
+    uint64_t len = (uint64_t)blocks * blk_sz;
 
-	skip_output(out, len);
+    skip_output(out, len);
 
-	return blocks;
+    return blocks;
 }
 
-int main(int argc, char *argv[])
-{
-	int in;
-	int out;
-	unsigned int i;
-	sparse_header_t sparse_header;
-	chunk_header_t chunk_header;
-	uint32_t total_blocks = 0;
-	int ret;
+int main(int argc, char *argv[]) {
+    int in;
+    int out;
+    unsigned int i;
+    sparse_header_t sparse_header;
+    chunk_header_t chunk_header;
+    uint32_t total_blocks = 0;
+    int ret;
 
-	if (argc > 3 || (argc > 1 && strcmp(argv[1], "--help") == 0)) {
-		usage();
-		exit(-1);
-	}
+    if (argc > 3 || (argc > 1 && strcmp(argv[1], "--help") == 0)) {
+        usage();
+        exit(-1);
+    }
 
-	if ( (copybuf = malloc(COPY_BUF_SIZE)) == 0) {
-		fprintf(stderr, "Cannot malloc copy buf\n");
-		exit(-1);
-	}
+    if ((copybuf = malloc(COPY_BUF_SIZE)) == 0) {
+        fprintf(stderr, "Cannot malloc copy buf\n");
+        exit(-1);
+    }
 
-	if (argc < 2 || strcmp(argv[1], "-") == 0) {
-		in = STDIN_FILENO;
-	} else {
-		if ((in = open(argv[1], O_RDONLY)) == 0) {
-			fprintf(stderr, "Cannot open input file %s\n", argv[1]);
-			exit(-1);
-		}
-	}
+    if (argc < 2 || strcmp(argv[1], "-") == 0) {
+        in = STDIN_FILENO;
+    } else {
+        if ((in = open(argv[1], O_RDONLY)) == 0) {
+            fprintf(stderr, "Cannot open input file %s\n", argv[1]);
+            exit(-1);
+        }
+    }
 
-	if (argc < 3 || strcmp(argv[2], "-") == 0) {
-		out = STDOUT_FILENO;
-	} else {
-		if ((out = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC, 0666)) == 0) {
-			fprintf(stderr, "Cannot open output file %s\n", argv[2]);
-			exit(-1);
-		}
-	}
+    if (argc < 3 || strcmp(argv[2], "-") == 0) {
+        out = STDOUT_FILENO;
+    } else {
+        if ((out = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC, 0666)) == 0) {
+            fprintf(stderr, "Cannot open output file %s\n", argv[2]);
+            exit(-1);
+        }
+    }
 
-	ret = read_all(in, &sparse_header, sizeof(sparse_header));
-	if (ret != sizeof(sparse_header)) {
-		fprintf(stderr, "Error reading sparse file header\n");
-		exit(-1);
-	}
+    ret = read_all(in, &sparse_header, sizeof(sparse_header));
+    if (ret != sizeof(sparse_header)) {
+        fprintf(stderr, "Error reading sparse file header\n");
+        exit(-1);
+    }
 
-	if (sparse_header.magic != SPARSE_HEADER_MAGIC) {
-		fprintf(stderr, "Bad magic\n");
-		exit(-1);
-	}
+    if (sparse_header.magic != SPARSE_HEADER_MAGIC) {
+        fprintf(stderr, "Bad magic\n");
+        exit(-1);
+    }
 
-	if (sparse_header.major_version != SPARSE_HEADER_MAJOR_VER) {
-		fprintf(stderr, "Unknown major version number\n");
-		exit(-1);
-	}
+    if (sparse_header.major_version != SPARSE_HEADER_MAJOR_VER) {
+        fprintf(stderr, "Unknown major version number\n");
+        exit(-1);
+    }
 
-	if (sparse_header.file_hdr_sz > SPARSE_HEADER_LEN) {
-		/* Skip the remaining bytes in a header that is longer than
-		 * we expected.
-		 */
-		skip_input(in, sparse_header.file_hdr_sz - SPARSE_HEADER_LEN);
-	}
+    if (sparse_header.file_hdr_sz > SPARSE_HEADER_LEN) {
+        /* Skip the remaining bytes in a header that is longer than
+         * we expected.
+         */
+        skip_input(in, sparse_header.file_hdr_sz - SPARSE_HEADER_LEN);
+    }
 
-	if ( (zerobuf = malloc(sparse_header.blk_sz)) == 0) {
-		fprintf(stderr, "Cannot malloc zero buf\n");
-		exit(-1);
-	}
+    if ((zerobuf = malloc(sparse_header.blk_sz)) == 0) {
+        fprintf(stderr, "Cannot malloc zero buf\n");
+        exit(-1);
+    }
 
-	for (i=0; i<sparse_header.total_chunks; i++) {
-		ret = read_all(in, &chunk_header, sizeof(chunk_header));
-		if (ret != sizeof(chunk_header)) {
-			fprintf(stderr, "Error reading chunk header\n");
-			exit(-1);
-		}
+    for (i = 0; i < sparse_header.total_chunks; i++) {
+        ret = read_all(in, &chunk_header, sizeof(chunk_header));
+        if (ret != sizeof(chunk_header)) {
+            fprintf(stderr, "Error reading chunk header\n");
+            exit(-1);
+        }
 
-		if (sparse_header.chunk_hdr_sz > CHUNK_HEADER_LEN) {
-			/* Skip the remaining bytes in a header that is longer than
-			 * we expected.
-			 */
-			skip_input(in, sparse_header.chunk_hdr_sz - CHUNK_HEADER_LEN);
-		}
+        if (sparse_header.chunk_hdr_sz > CHUNK_HEADER_LEN) {
+            /* Skip the remaining bytes in a header that is longer than
+             * we expected.
+             */
+            skip_input(in, sparse_header.chunk_hdr_sz - CHUNK_HEADER_LEN);
+        }
 
-		switch (chunk_header.chunk_type) {
-		    case CHUNK_TYPE_RAW:
-			if (chunk_header.total_sz != (sparse_header.chunk_hdr_sz +
-				 (chunk_header.chunk_sz * sparse_header.blk_sz)) ) {
-				fprintf(stderr, "Bogus chunk size for chunk %d, type Raw\n", i);
-				exit(-1);
-			}
-			total_blocks += process_raw_chunk(in, out,
-					 chunk_header.chunk_sz, sparse_header.blk_sz);
-			break;
-		    case CHUNK_TYPE_FILL:
-			if (chunk_header.total_sz != (sparse_header.chunk_hdr_sz + sizeof(uint32_t)) ) {
-				fprintf(stderr, "Bogus chunk size for chunk %d, type Fill\n", i);
-				exit(-1);
-			}
-			total_blocks += process_fill_chunk(in, out,
-					 chunk_header.chunk_sz, sparse_header.blk_sz);
-			break;
-		    case CHUNK_TYPE_DONT_CARE:
-			if (chunk_header.total_sz != sparse_header.chunk_hdr_sz) {
-				fprintf(stderr, "Bogus chunk size for chunk %d, type Dont Care\n", i);
-				exit(-1);
-			}
-			total_blocks += process_skip_chunk(out,
-					 chunk_header.chunk_sz, sparse_header.blk_sz);
-			break;
-		    default:
-			fprintf(stderr, "Unknown chunk type 0x%4.4x\n", chunk_header.chunk_type);
-		}
+        switch (chunk_header.chunk_type) {
+        case CHUNK_TYPE_RAW:
+            if (chunk_header.total_sz != (sparse_header.chunk_hdr_sz +
+                                          (chunk_header.chunk_sz * sparse_header.blk_sz))) {
+                fprintf(stderr, "Bogus chunk size for chunk %d, type Raw\n", i);
+                exit(-1);
+            }
+            total_blocks += process_raw_chunk(in, out,
+                                              chunk_header.chunk_sz, sparse_header.blk_sz);
+            break;
+        case CHUNK_TYPE_FILL:
+            if (chunk_header.total_sz != (sparse_header.chunk_hdr_sz + sizeof(uint32_t))) {
+                fprintf(stderr, "Bogus chunk size for chunk %d, type Fill\n", i);
+                exit(-1);
+            }
+            total_blocks += process_fill_chunk(in, out,
+                                               chunk_header.chunk_sz, sparse_header.blk_sz);
+            break;
+        case CHUNK_TYPE_DONT_CARE:
+            if (chunk_header.total_sz != sparse_header.chunk_hdr_sz) {
+                fprintf(stderr, "Bogus chunk size for chunk %d, type Dont Care\n", i);
+                exit(-1);
+            }
+            total_blocks += process_skip_chunk(out,
+                                               chunk_header.chunk_sz, sparse_header.blk_sz);
+            break;
+        default:
+            fprintf(stderr, "Unknown chunk type 0x%4.4x\n", chunk_header.chunk_type);
+        }
+    }
 
-	}
+    /* If the last chunk was a skip, then the code just did a seek, but
+     * no write, and the file won't actually be the correct size.  This
+     * will make the file the correct size.  Make sure the offset is
+     * computed in 64 bits, and the function called can handle 64 bits.
+     */
+    if (ftruncate64(out, (u64)total_blocks * sparse_header.blk_sz)) {
+        fprintf(stderr, "Error calling ftruncate() to set the image size\n");
+        exit(-1);
+    }
 
-	/* If the last chunk was a skip, then the code just did a seek, but
-	 * no write, and the file won't actually be the correct size.  This
-	 * will make the file the correct size.  Make sure the offset is
-	 * computed in 64 bits, and the function called can handle 64 bits.
-	 */
-	if (ftruncate64(out, (u64)total_blocks * sparse_header.blk_sz)) {
-		fprintf(stderr, "Error calling ftruncate() to set the image size\n");
-		exit(-1);
-	}
+    close(in);
+    close(out);
 
-	close(in);
-	close(out);
+    if (sparse_header.total_blks != total_blocks) {
+        fprintf(stderr, "Wrote %d blocks, expected to write %d blocks\n",
+                total_blocks, sparse_header.total_blks);
+        exit(-1);
+    }
 
-	if (sparse_header.total_blks != total_blocks) {
-		fprintf(stderr, "Wrote %d blocks, expected to write %d blocks\n",
-			 total_blocks, sparse_header.total_blks);
-		exit(-1);
-	}
-
-	exit(0);
+    exit(0);
 }
-
