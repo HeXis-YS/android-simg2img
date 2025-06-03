@@ -28,7 +28,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-typedef struct sparse_header {
+#define SPARSE_HEADER_MAJOR_VER 1
+#define SPARSE_HEADER_MAGIC 0xED26FF3A
+typedef struct {
     uint32_t magic;          /* 0xED26FF3A */
     uint16_t major_version;  /* (0x1) - reject images with higher major versions */
     uint16_t minor_version;  /* (0x0) - allow images with higer minor versions */
@@ -41,104 +43,98 @@ typedef struct sparse_header {
     /* as 0. Standard 802.3 polynomial, use a Public Domain */
     /* table implementation */
 } sparse_header_t;
-
-#define SPARSE_HEADER_MAGIC 0xED26FF3A
+#define SPARSE_HEADER_LEN (sizeof(sparse_header_t))
 
 #define CHUNK_TYPE_RAW 0xCAC1
 #define CHUNK_TYPE_FILL 0xCAC2
 #define CHUNK_TYPE_DONT_CARE 0xCAC3
-
-typedef struct chunk_header {
+typedef struct {
     uint16_t chunk_type; /* 0xCAC1 -> raw; 0xCAC2 -> fill; 0xCAC3 -> don't care */
     uint16_t reserved1;
     uint32_t chunk_sz; /* in blocks in output image */
     uint32_t total_sz; /* in bytes of chunk input file including chunk header and data */
 } chunk_header_t;
-
 /* Following a Raw or Fill chunk is data.
  *  For a Raw chunk, it's the data in chunk_sz * blk_sz.
  *  For a Fill chunk, it's 4 bytes of the fill data.
  */
+#define CHUNK_HEADER_LEN (sizeof(chunk_header_t))
 
 #define BUF_SIZE (1024 * 1024)
 uint8_t *copybuf;
 uint8_t *fillbuf;
 
-#define SPARSE_HEADER_MAJOR_VER 1
-#define SPARSE_HEADER_LEN (sizeof(sparse_header_t))
-#define CHUNK_HEADER_LEN (sizeof(chunk_header_t))
-
-#define min(a, b) ((a) > (b) ? (b) : (a))
+#define min(a, b) ((a) < (b) ? (a) : (b))
 
 void usage() {
     fprintf(stderr, "Usage: simg2img [sparse_image_file] [raw_image_file]\n");
 }
 
 static ssize_t read_all(int fd, void *buf, size_t len) {
-    ssize_t total = 0;
+    size_t remaining = len;
     ssize_t ret;
     char *ptr = buf;
 
-    while (total < len) {
-        ret = read(fd, ptr, len - total);
+    while (remaining) {
+        ret = read(fd, ptr, remaining);
         if (ret <= 0) {
             break;
         }
         ptr += ret;
-        total += ret;
+        remaining -= ret;
     }
 
     if (ret < 0) {
-        return ret;
+        return (ssize_t)ret;
     }
 
-    return total;
+    return (ssize_t)(len - remaining);
 }
 
 static ssize_t write_all(int fd, const void *buf, size_t len) {
-    ssize_t total = 0;
+    size_t remaining = len;
     ssize_t ret;
     char *ptr = (char *)buf;
 
-    while (total < len) {
-        ret = write(fd, ptr, len - total);
+    while (remaining) {
+        ret = write(fd, ptr, remaining);
         if (ret <= 0) {
             break;
         }
         ptr += ret;
-        total += ret;
+        remaining -= ret;
     }
 
     if (ret < 0) {
         return ret;
     }
 
-    return total;
+    return len - remaining;
 }
 
-static ssize_t skip_input(int fd, uint64_t len) {
-    ssize_t total = 0;
-    ssize_t ret;
+static int64_t skip_input(int fd, uint64_t len) {
+    uint64_t remaining = len;
+    int64_t ret;
 
     if (lseek64(fd, len, SEEK_CUR) >= 0) {
         return len;
     }
 
-    while (total < len) {
-        ret = read_all(fd, copybuf, min(len, BUF_SIZE));
+    while (remaining) {
+        ret = read_all(fd, copybuf, min(remaining, BUF_SIZE));
         if (ret < 0) {
             perror("Could not seek or read to skip input data");
             exit(-1);
         }
-        total += ret;
+        remaining -= ret;
     }
 
     return len;
 }
 
-static ssize_t skip_output(int fd, uint64_t len) {
-    ssize_t total = 0;
-    ssize_t ret;
+static int64_t skip_output(int fd, uint64_t len) {
+    uint64_t remaining = len;
+    int64_t ret;
 
     if (lseek64(fd, len, SEEK_CUR) >= 0) {
         return len;
@@ -148,28 +144,28 @@ static ssize_t skip_output(int fd, uint64_t len) {
         memset(fillbuf, 0, BUF_SIZE);
     }
 
-    while (total < len) {
-        ret = write_all(fd, fillbuf, min(len, BUF_SIZE));
+    while (remaining) {
+        ret = write_all(fd, fillbuf, min(remaining, BUF_SIZE));
         if (ret < 0) {
             perror("Could not seek or write to skip output data");
             exit(-1);
         }
-        total += ret;
+        remaining -= ret;
     }
 
     return len;
 }
 
-int process_raw_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz) {
+uint32_t process_raw_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz) {
     uint64_t len = (uint64_t)blocks * blk_sz;
-    int ret;
-    int chunk;
+    int64_t ret;
+    uint64_t chunk;
 
     while (len) {
         chunk = min(len, BUF_SIZE);
         ret = read_all(in, copybuf, chunk);
         if (ret != chunk) {
-            fprintf(stderr, "read returned an error copying a raw chunk: %d %d\n",
+            fprintf(stderr, "read returned an error copying a raw chunk: %lld %lld\n",
                     ret, chunk);
             exit(-1);
         }
@@ -184,10 +180,10 @@ int process_raw_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz) {
     return blocks;
 }
 
-int process_fill_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz) {
+uint32_t process_fill_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz) {
     uint64_t len = (uint64_t)blocks * blk_sz;
-    int ret;
-    int chunk;
+    int64_t ret;
+    uint64_t chunk;
     uint32_t fill_val;
     uint32_t *fillbuf32;
 
