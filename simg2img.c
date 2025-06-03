@@ -85,7 +85,7 @@ static ssize_t read_all(int fd, void *buf, size_t len) {
     }
 
     if (ret < 0) {
-        return (ssize_t)ret;
+        return ret;
     }
 
     return (ssize_t)(len - remaining);
@@ -109,7 +109,7 @@ static ssize_t write_all(int fd, const void *buf, size_t len) {
         return ret;
     }
 
-    return len - remaining;
+    return (ssize_t)(len - remaining);
 }
 
 static ssize_t skip_input(int fd, size_t len) {
@@ -141,7 +141,7 @@ static int64_t skip_output(int fd, uint64_t len) {
     }
 
     if (*(uint32_t *)fillbuf != 0) {
-        memset((void *)fillbuf, 0, BUF_SIZE);
+        memset(fillbuf, 0, BUF_SIZE);
     }
 
     while (remaining) {
