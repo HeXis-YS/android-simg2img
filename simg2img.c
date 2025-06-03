@@ -112,12 +112,12 @@ static ssize_t write_all(int fd, const void *buf, size_t len) {
     return len - remaining;
 }
 
-static int64_t skip_input(int fd, uint64_t len) {
-    uint64_t remaining = len;
-    int64_t ret;
+static ssize_t skip_input(int fd, size_t len) {
+    size_t remaining = len;
+    ssize_t ret;
 
     if (lseek64(fd, len, SEEK_CUR) >= 0) {
-        return len;
+        return (ssize_t)len;
     }
 
     while (remaining) {
@@ -129,48 +129,48 @@ static int64_t skip_input(int fd, uint64_t len) {
         remaining -= ret;
     }
 
-    return len;
+    return (ssize_t)len;
 }
 
 static int64_t skip_output(int fd, uint64_t len) {
     uint64_t remaining = len;
-    int64_t ret;
+    ssize_t ret;
 
-    if (lseek64(fd, len, SEEK_CUR) >= 0) {
+    if (lseek64(fd, (off_t)len, SEEK_CUR) >= 0) {
         return len;
     }
 
     if (*(uint32_t *)fillbuf != 0) {
-        memset(fillbuf, 0, BUF_SIZE);
+        memset((void *)fillbuf, 0, BUF_SIZE);
     }
 
     while (remaining) {
-        ret = write_all(fd, fillbuf, min(remaining, BUF_SIZE));
+        ret = write_all(fd, fillbuf, (size_t)min(remaining, BUF_SIZE));
         if (ret < 0) {
             perror("Could not seek or write to skip output data");
             exit(-1);
         }
-        remaining -= ret;
+        remaining -= (uint64_t)ret;
     }
 
-    return len;
+    return (int64_t)len;
 }
 
-uint32_t process_raw_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz) {
+int process_raw_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz) {
     uint64_t len = (uint64_t)blocks * blk_sz;
-    int64_t ret;
-    uint64_t chunk;
+    ssize_t ret;
+    size_t chunk;
 
     while (len) {
-        chunk = min(len, BUF_SIZE);
+        chunk = (size_t)min(len, BUF_SIZE);
         ret = read_all(in, copybuf, chunk);
-        if (ret != chunk) {
-            fprintf(stderr, "read returned an error copying a raw chunk: %lld %lld\n",
+        if (ret != (ssize_t)chunk) {
+            fprintf(stderr, "read returned an error copying a raw chunk: %zd %zu\n",
                     ret, chunk);
             exit(-1);
         }
         ret = write_all(out, copybuf, chunk);
-        if (ret != chunk) {
+        if (ret != (ssize_t)chunk) {
             fprintf(stderr, "write returned an error copying a raw chunk\n");
             exit(-1);
         }
@@ -182,8 +182,8 @@ uint32_t process_raw_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz) {
 
 uint32_t process_fill_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz) {
     uint64_t len = (uint64_t)blocks * blk_sz;
-    int64_t ret;
-    uint64_t chunk;
+    ssize_t ret;
+    size_t chunk;
     uint32_t fill_val;
     uint32_t *fillbuf32;
 
@@ -199,7 +199,7 @@ uint32_t process_fill_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz) {
     while (len) {
         chunk = min(len, BUF_SIZE);
         ret = write_all(out, fillbuf, chunk);
-        if (ret != chunk) {
+        if (ret != (ssize_t)chunk) {
             fprintf(stderr, "write returned an error copying a raw chunk\n");
             exit(-1);
         }
