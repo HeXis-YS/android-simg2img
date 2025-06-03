@@ -98,7 +98,7 @@ static ssize_t read_all(int fd, void *buf, size_t len) {
 static ssize_t write_all(int fd, const void *buf, size_t len) {
     ssize_t total = 0;
     ssize_t ret;
-    char *ptr = buf;
+    char *ptr = (char *)buf;
 
     while (total < len) {
         ret = write(fd, ptr, len - total);
@@ -280,11 +280,12 @@ int main(int argc, char *argv[]) {
         exit(-1);
     }
 
-    fillbuf = zmalloc(BUF_SIZE);
+    fillbuf = malloc(BUF_SIZE);
     if (fillbuf == NULL) {
         fprintf(stderr, "Cannot malloc fill buf\n");
         exit(-1);
     }
+    memset(fillbuf, 0, BUF_SIZE);
 
     if (sparse_header.file_hdr_sz > SPARSE_HEADER_LEN) {
         /* Skip the remaining bytes in a header that is longer than
