@@ -60,102 +60,101 @@ typedef struct chunk_header {
  *  For a Fill chunk, it's 4 bytes of the fill data.
  */
 
-#define COPY_BUF_SIZE (1024 * 1024)
+#define BUF_SIZE (1024 * 1024)
 uint8_t *copybuf;
-
-/* This will be malloc'ed with the size of blk_sz from the sparse file header */
-uint8_t *zerobuf;
+uint8_t *fillbuf;
 
 #define SPARSE_HEADER_MAJOR_VER 1
 #define SPARSE_HEADER_LEN (sizeof(sparse_header_t))
 #define CHUNK_HEADER_LEN (sizeof(chunk_header_t))
 
+#define min(a, b) ((a) > (b) ? (b) : (a))
+
 void usage() {
     fprintf(stderr, "Usage: simg2img [sparse_image_file] [raw_image_file]\n");
 }
 
-static int read_all(int fd, void *buf, size_t len) {
-    size_t total = 0;
-    int ret;
+static ssize_t read_all(int fd, void *buf, size_t len) {
+    ssize_t total = 0;
+    ssize_t ret;
     char *ptr = buf;
 
     while (total < len) {
         ret = read(fd, ptr, len - total);
-
-        if (ret < 0) {
-            return ret;
+        if (ret <= 0) {
+            break;
         }
-
-        if (ret == 0) {
-            return total;
-        }
-
         ptr += ret;
         total += ret;
+    }
+
+    if (ret < 0) {
+        return ret;
     }
 
     return total;
 }
 
-static int write_all(int fd, void *buf, size_t len) {
-    size_t total = 0;
-    int ret;
+static ssize_t write_all(int fd, const void *buf, size_t len) {
+    ssize_t total = 0;
+    ssize_t ret;
     char *ptr = buf;
 
     while (total < len) {
         ret = write(fd, ptr, len - total);
-
-        if (ret < 0) {
-            return ret;
+        if (ret <= 0) {
+            break;
         }
-
-        if (ret == 0) {
-            return total;
-        }
-
         ptr += ret;
         total += ret;
+    }
+
+    if (ret < 0) {
+        return ret;
     }
 
     return total;
 }
 
-static int skip_all(int fd, uint64_t len, int (*iofunc)(int, void *, size_t)) {
-    int ret;
+static ssize_t skip_input(int fd, uint64_t len) {
+    ssize_t total = 0;
+    ssize_t ret;
 
-    while (len > 0) {
-        ret = iofunc(fd, copybuf, len > COPY_BUF_SIZE ? COPY_BUF_SIZE : len);
-        if (ret < 0) {
-            return -1;
-        }
-        len -= ret;
-    }
-    return 0;
-}
-
-static int skip_input(int fd, uint64_t len) {
     if (lseek64(fd, len, SEEK_CUR) >= 0) {
         return len;
     }
 
-    if (skip_all(fd, len, &read_all) < 0) {
-        perror("Could not seek or read to skip input data");
-        exit(-1);
+    while (total < len) {
+        ret = read_all(fd, copybuf, min(len, BUF_SIZE));
+        if (ret < 0) {
+            perror("Could not seek or read to skip input data");
+            exit(-1);
+        }
+        total += ret;
     }
 
     return len;
 }
 
-static int skip_output(int fd, uint64_t len) {
+static ssize_t skip_output(int fd, uint64_t len) {
+    ssize_t total = 0;
+    ssize_t ret;
+
     if (lseek64(fd, len, SEEK_CUR) >= 0) {
         return len;
     }
 
-    memset(copybuf, 0, len > COPY_BUF_SIZE ? COPY_BUF_SIZE : len);
+    if (*(uint32_t *)fillbuf != 0) {
+        memset(fillbuf, 0, BUF_SIZE);
+    }
 
-    if (skip_all(fd, len, &write_all) < 0) {
-        perror("Could not seek or write to skip output data");
-        exit(-1);
+    while (total < len) {
+        ret = write_all(fd, fillbuf, min(len, BUF_SIZE));
+        if (ret < 0) {
+            perror("Could not seek or write to skip output data");
+            exit(-1);
+        }
+        total += ret;
     }
 
     return len;
@@ -167,7 +166,7 @@ int process_raw_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz) {
     int chunk;
 
     while (len) {
-        chunk = (len > COPY_BUF_SIZE) ? COPY_BUF_SIZE : len;
+        chunk = min(len, BUF_SIZE);
         ret = read_all(in, copybuf, chunk);
         if (ret != chunk) {
             fprintf(stderr, "read returned an error copying a raw chunk: %d %d\n",
@@ -190,19 +189,20 @@ int process_fill_chunk(int in, int out, uint32_t blocks, uint32_t blk_sz) {
     int ret;
     int chunk;
     uint32_t fill_val;
-    uint32_t *fillbuf;
-    unsigned int i;
+    uint32_t *fillbuf32;
 
-    /* Fill copy_buf with the fill value */
+    /* Fill fillbuf with the fill value */
     ret = read_all(in, &fill_val, sizeof(fill_val));
-    fillbuf = (uint32_t *)copybuf;
-    for (i = 0; i < (COPY_BUF_SIZE / sizeof(fill_val)); i++) {
-        fillbuf[i] = fill_val;
+    fillbuf32 = (uint32_t *)fillbuf;
+    if (*fillbuf32 != fill_val) {
+        for (int i = 0; i < (BUF_SIZE / sizeof(fill_val)); i++) {
+            fillbuf32[i] = fill_val;
+        }
     }
 
     while (len) {
-        chunk = (len > COPY_BUF_SIZE) ? COPY_BUF_SIZE : len;
-        ret = write_all(out, copybuf, chunk);
+        chunk = min(len, BUF_SIZE);
+        ret = write_all(out, fillbuf, chunk);
         if (ret != chunk) {
             fprintf(stderr, "write returned an error copying a raw chunk\n");
             exit(-1);
@@ -238,15 +238,11 @@ int main(int argc, char *argv[]) {
         exit(-1);
     }
 
-    if ((copybuf = malloc(COPY_BUF_SIZE)) == 0) {
-        fprintf(stderr, "Cannot malloc copy buf\n");
-        exit(-1);
-    }
-
     if (argc < 2 || strcmp(argv[1], "-") == 0) {
         in = STDIN_FILENO;
     } else {
-        if ((in = open(argv[1], O_RDONLY)) == 0) {
+        in = open(argv[1], O_RDONLY);
+        if (in < 0) {
             fprintf(stderr, "Cannot open input file %s\n", argv[1]);
             exit(-1);
         }
@@ -255,7 +251,8 @@ int main(int argc, char *argv[]) {
     if (argc < 3 || strcmp(argv[2], "-") == 0) {
         out = STDOUT_FILENO;
     } else {
-        if ((out = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC, 0666)) == 0) {
+        out = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (out < 0) {
             fprintf(stderr, "Cannot open output file %s\n", argv[2]);
             exit(-1);
         }
@@ -277,16 +274,23 @@ int main(int argc, char *argv[]) {
         exit(-1);
     }
 
+    copybuf = malloc(BUF_SIZE);
+    if (copybuf == NULL) {
+        fprintf(stderr, "Cannot malloc copy buf\n");
+        exit(-1);
+    }
+
+    fillbuf = zmalloc(BUF_SIZE);
+    if (fillbuf == NULL) {
+        fprintf(stderr, "Cannot malloc fill buf\n");
+        exit(-1);
+    }
+
     if (sparse_header.file_hdr_sz > SPARSE_HEADER_LEN) {
         /* Skip the remaining bytes in a header that is longer than
          * we expected.
          */
         skip_input(in, sparse_header.file_hdr_sz - SPARSE_HEADER_LEN);
-    }
-
-    if ((zerobuf = malloc(sparse_header.blk_sz)) == 0) {
-        fprintf(stderr, "Cannot malloc zero buf\n");
-        exit(-1);
     }
 
     for (i = 0; i < sparse_header.total_chunks; i++) {
@@ -339,7 +343,7 @@ int main(int argc, char *argv[]) {
      * will make the file the correct size.  Make sure the offset is
      * computed in 64 bits, and the function called can handle 64 bits.
      */
-    if (ftruncate64(out, (u64)total_blocks * sparse_header.blk_sz)) {
+    if (ftruncate64(out, (uint64_t)total_blocks * sparse_header.blk_sz)) {
         fprintf(stderr, "Error calling ftruncate() to set the image size\n");
         exit(-1);
     }
