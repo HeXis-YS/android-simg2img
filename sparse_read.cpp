@@ -217,6 +217,7 @@ static int process_chunk(struct sparse_file* s, SparseFileSource* source, unsign
       }
       return chunk_header->chunk_sz;
     case CHUNK_TYPE_DONT_CARE:
+      ret = 0;
       if (chunk_data_size != 0) {
         verbose_error(s->verbose, ret, "skip block at %" PRId64, offset);
         return -EINVAL;
