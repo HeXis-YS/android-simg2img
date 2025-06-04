@@ -39,36 +39,26 @@ LIB_INCS = -Iinclude -Iandroid-base/include
 
 LDFLAGS += -L. -l$(LIB_NAME) -lm -s -Wl,-O2,--gc-sections -static
 
-BINS = simg2img simg2simg img2simg append2simg
+BINS = simg2img img2simg
 HEADERS = include/sparse/sparse.h
 
 # simg2img
 SIMG2IMG_SRCS = simg2img.cpp
 SIMG2IMG_OBJS = $(SIMG2IMG_SRCS:%.cpp=%.o)
 
-# simg2simg
-SIMG2SIMG_SRCS = simg2simg.cpp
-SIMG2SIMG_OBJS = $(SIMG2SIMG_SRCS:%.cpp=%.o)
-
 # img2simg
 IMG2SIMG_SRCS = img2simg.cpp
 IMG2SIMG_OBJS = $(IMG2SIMG_SRCS:%.cpp=%.o)
 
-# append2simg
-APPEND2SIMG_SRCS = append2simg.cpp
-APPEND2SIMG_OBJS = $(APPEND2SIMG_SRCS:%.cpp=%.o)
-
 SRCS = \
     $(SIMG2IMG_SRCS) \
-    $(SIMG2SIMG_SRCS) \
     $(IMG2SIMG_SRCS) \
-    $(APPEND2SIMG_SRCS) \
     $(LIB_SRCS)
 
 .PHONY: default all clean install
 
 default: all
-all: $(SLIB) simg2img simg2simg img2simg append2simg
+all: $(SLIB) simg2img img2simg
 
 install: all
 	install -d $(PREFIX)/bin $(PREFIX)/lib $(PREFIX)/include/sparse
@@ -83,20 +73,14 @@ $(SLIB): $(LIB_OBJS)
 simg2img: $(SIMG2IMG_SRCS) $(SLIB)
 		$(CXX) $(CPPFLAGS) $(LIB_INCS) -o simg2img $< $(LDFLAGS)
 
-simg2simg: $(SIMG2SIMG_SRCS) $(SLIB)
-		$(CXX) $(CPPFLAGS) $(LIB_INCS) -o simg2simg $< $(LDFLAGS)
-
 img2simg: $(IMG2SIMG_SRCS) $(SLIB)
 		$(CXX) $(CPPFLAGS) $(LIB_INCS) -o img2simg $< $(LDFLAGS)
-
-append2simg: $(APPEND2SIMG_SRCS) $(SLIB)
-		$(CXX) $(CPPFLAGS) $(LIB_INCS) -o append2simg $< $(LDFLAGS)
 
 %.o: %.cpp .depend
 		$(CXX) $(CPPFLAGS) $(LIB_INCS) -c $< -o $@
 
 clean:
-		$(RM) -f *.o *.a simg2img simg2simg img2simg append2simg .depend
+		$(RM) -f *.o *.a simg2img img2simg .depend
 
 ifneq ($(wildcard .depend),)
 include .depend
