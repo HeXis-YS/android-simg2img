@@ -172,11 +172,8 @@ static int process_raw_chunk(struct sparse_file* s, unsigned int chunk_size,
 static int process_fill_chunk(struct sparse_file* s, unsigned int chunk_size,
                               SparseFileSource* source, unsigned int blocks, unsigned int block) {
   int ret;
-  int chunk;
   int64_t len = (int64_t)blocks * s->block_size;
   uint32_t fill_val;
-  uint32_t* fillbuf;
-  unsigned int i;
 
   if (chunk_size != sizeof(fill_val)) {
     return -EINVAL;
