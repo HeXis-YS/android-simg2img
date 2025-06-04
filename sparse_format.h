@@ -41,7 +41,7 @@ typedef struct sparse_header {
 #define CHUNK_TYPE_RAW 0xCAC1
 #define CHUNK_TYPE_FILL 0xCAC2
 #define CHUNK_TYPE_DONT_CARE 0xCAC3
-#define CHUNK_TYPE_CRC32 0xCAC4
+// #define CHUNK_TYPE_CRC32 0xCAC4
 
 typedef struct chunk_header {
   __le16 chunk_type; /* 0xCAC1 -> raw; 0xCAC2 -> fill; 0xCAC3 -> don't care */
@@ -53,7 +53,6 @@ typedef struct chunk_header {
 /* Following a Raw or Fill or CRC32 chunk is data.
  *  For a Raw chunk, it's the data in chunk_sz * blk_sz.
  *  For a Fill chunk, it's 4 bytes of the fill data.
- *  For a CRC32 chunk, it's 4 bytes of CRC32
  */
 
 #ifdef __cplusplus

@@ -153,33 +153,29 @@ int sparse_file_add_fd(struct sparse_file *s,
  * @fd - file descriptor to write to
  * @gz - write a gzipped file
  * @sparse - write in the Android sparse file format
- * @crc - append a crc chunk
  *
  * Writes a sparse file to a file.  If gz is true, the data will be passed
  * through zlib.  If sparse is true, the file will be written in the Android
  * sparse file format.  If sparse is false, the file will be written by seeking
  * over unused chunks, producing a smaller file if the filesystem supports
- * sparse files.  If crc is true, the crc of the expanded data will be
- * calculated and appended in a crc chunk.
+ * sparse files.
  *
  * Returns 0 on success, negative errno on error.
  */
-int sparse_file_write(struct sparse_file *s, int fd, bool sparse,
-		bool crc);
+int sparse_file_write(struct sparse_file *s, int fd, bool sparse);
 
 /**
  * sparse_file_len - return the length of a sparse file if written to disk
  *
  * @s - sparse file cookie
  * @sparse - write in the Android sparse file format
- * @crc - append a crc chunk
  *
  * Returns the size a sparse file would be on disk if it were written in the
  * specified format.  If sparse is true, this is the size of the data in the
  * sparse format.  If sparse is false, this is the size of the normal
  * non-sparse file.
  */
-int64_t sparse_file_len(struct sparse_file *s, bool sparse, bool crc);
+int64_t sparse_file_len(struct sparse_file *s, bool sparse);
 
 /**
  * sparse_file_block_size
@@ -193,20 +189,18 @@ unsigned int sparse_file_block_size(struct sparse_file *s);
  *
  * @s - sparse file cookie
  * @sparse - write in the Android sparse file format
- * @crc - append a crc chunk
  * @write - function to call for each block
  * @priv - value that will be passed as the first argument to write
  *
  * Writes a sparse file by calling a callback function.  If sparse is true, the
- * file will be written in the Android sparse file format.  If crc is true, the
- * crc of the expanded data will be calculated and appended in a crc chunk.
+ * file will be written in the Android sparse file format.
  * The callback 'write' will be called with data and length for each data,
  * and with data==NULL to skip over a region (only used for non-sparse format).
  * The callback should return negative on error, 0 on success.
  *
  * Returns 0 on success, negative errno on error.
  */
-int sparse_file_callback(struct sparse_file *s, bool sparse, bool crc,
+int sparse_file_callback(struct sparse_file *s, bool sparse,
 		int (*write)(void *priv, const void *data, size_t len), void *priv);
 
 /**
@@ -214,7 +208,6 @@ int sparse_file_callback(struct sparse_file *s, bool sparse, bool crc,
  *
  * @s - sparse file cookie
  * @sparse - write in the Android sparse file format
- * @crc - append a crc chunk
  * @write - function to call for each block
  * @priv - value that will be passed as the first argument to write
  *
@@ -223,7 +216,7 @@ int sparse_file_callback(struct sparse_file *s, bool sparse, bool crc,
  *
  * Returns 0 on success, negative errno on error.
  */
-int sparse_file_foreach_chunk(struct sparse_file *s, bool sparse, bool crc,
+int sparse_file_foreach_chunk(struct sparse_file *s, bool sparse,
 	int (*write)(void *priv, const void *data, size_t len, unsigned int block,
 		     unsigned int nr_blocks),
 	void *priv);
@@ -233,39 +226,34 @@ int sparse_file_foreach_chunk(struct sparse_file *s, bool sparse, bool crc,
  * @s - sparse file cookie
  * @fd - file descriptor to read from
  * @sparse - read a file in the Android sparse file format
- * @crc - verify the crc of a file in the Android sparse file format
  *
  * Reads a file into a sparse file cookie.  If sparse is true, the file is
  * assumed to be in the Android sparse file format.  If sparse is false, the
  * file will be sparsed by looking for block aligned chunks of all zeros or
- * another 32 bit value.  If crc is true, the crc of the sparse file will be
- * verified.
+ * another 32 bit value.
  *
  * Returns 0 on success, negative errno on error.
  */
-int sparse_file_read(struct sparse_file *s, int fd, bool sparse, bool crc);
+int sparse_file_read(struct sparse_file *s, int fd, bool sparse);
 
 /**
  * sparse_file_read_buf - read a buffer into a sparse file cookie
  *
  * @s - sparse file cookie
  * @buf - buffer to read from
- * @crc - verify the crc of a file in the Android sparse file format
  *
  * Reads a buffer into a sparse file cookie. The buffer must remain
- * valid until the sparse file cookie is freed. If crc is true, the
- * crc of the sparse file will be verified.
+ * valid until the sparse file cookie is freed.
  *
  * Returns 0 on success, negative errno on error.
  */
-int sparse_file_read_buf(struct sparse_file *s, char *buf, bool crc);
+int sparse_file_read_buf(struct sparse_file *s, char *buf);
 
 /**
  * sparse_file_import - import an existing sparse file
  *
  * @fd - file descriptor to read from
  * @verbose - print verbose errors while reading the sparse file
- * @crc - verify the crc of a file in the Android sparse file format
  *
  * Reads an existing sparse file into a sparse file cookie, recreating the same
  * sparse cookie that was used to write it.  If verbose is true, prints verbose
@@ -273,14 +261,13 @@ int sparse_file_read_buf(struct sparse_file *s, char *buf, bool crc);
  *
  * Returns a new sparse file cookie on success, NULL on error.
  */
-struct sparse_file *sparse_file_import(int fd, bool verbose, bool crc);
+struct sparse_file *sparse_file_import(int fd, bool verbose);
 
 /**
  * sparse_file_import_buf - import an existing sparse file from a buffer
  *
  * @buf - buffer to read from
  * @verbose - print verbose errors while reading the sparse file
- * @crc - verify the crc of a file in the Android sparse file format
  *
  * Reads existing sparse file data into a sparse file cookie, recreating the same
  * sparse cookie that was used to write it.  If verbose is true, prints verbose
@@ -288,24 +275,23 @@ struct sparse_file *sparse_file_import(int fd, bool verbose, bool crc);
  *
  * Returns a new sparse file cookie on success, NULL on error.
  */
-struct sparse_file *sparse_file_import_buf(char* buf, bool verbose, bool crc);
+struct sparse_file *sparse_file_import_buf(char* buf, bool verbose);
 
 /**
  * sparse_file_import_auto - import an existing sparse or normal file
  *
  * @fd - file descriptor to read from
- * @crc - verify the crc of a file in the Android sparse file format
  * @verbose - whether to use verbose logging
  *
  * Reads an existing sparse or normal file into a sparse file cookie.
  * Attempts to determine if the file is sparse or not by looking for the sparse
  * file magic number in the first 4 bytes.  If the file is not sparse, the file
  * will be sparsed by looking for block aligned chunks of all zeros or another
- * 32 bit value.  If crc is true, the crc of the sparse file will be verified.
+ * 32 bit value.
  *
  * Returns a new sparse file cookie on success, NULL on error.
  */
-struct sparse_file *sparse_file_import_auto(int fd, bool crc, bool verbose);
+struct sparse_file *sparse_file_import_auto(int fd, bool verbose);
 
 /** sparse_file_resparse - rechunk an existing sparse file into smaller files
  *

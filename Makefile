@@ -30,7 +30,6 @@ LIB_SRCS = \
     backed_block.cpp \
     output_file.cpp \
     sparse.cpp \
-    sparse_crc32.cpp \
     sparse_err.cpp \
     sparse_read.cpp \
     android-base/stringprintf.cpp

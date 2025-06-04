@@ -26,10 +26,10 @@ extern "C" {
 struct output_file;
 
 struct output_file* output_file_open_fd(int fd, unsigned int block_size, int64_t len,
-                                        int sparse, int chunks, int crc);
+                                        int sparse, int chunks);
 struct output_file* output_file_open_callback(int (*write)(void*, const void*, size_t), void* priv,
                                               unsigned int block_size, int64_t len, int gz,
-                                              int sparse, int chunks, int crc);
+                                              int sparse, int chunks);
 int write_data_chunk(struct output_file* out, unsigned int len, void* data);
 int write_fill_chunk(struct output_file* out, unsigned int len, uint32_t fill_val);
 int write_file_chunk(struct output_file* out, unsigned int len, const char* file, int64_t offset);
