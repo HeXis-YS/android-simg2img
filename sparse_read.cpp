@@ -195,16 +195,6 @@ static int process_fill_chunk(struct sparse_file* s, unsigned int chunk_size,
   return 0;
 }
 
-static int process_skip_chunk(struct sparse_file* s, unsigned int chunk_size,
-                              SparseFileSource* source __unused, unsigned int blocks,
-                              unsigned int block __unused) {
-  if (chunk_size != 0) {
-    return -EINVAL;
-  }
-
-  return 0;
-}
-
 static int process_chunk(struct sparse_file* s, SparseFileSource* source, unsigned int chunk_hdr_sz,
                          chunk_header_t* chunk_header, unsigned int cur_block) {
   int ret;
@@ -230,12 +220,9 @@ static int process_chunk(struct sparse_file* s, SparseFileSource* source, unsign
       }
       return chunk_header->chunk_sz;
     case CHUNK_TYPE_DONT_CARE:
-      ret = process_skip_chunk(s, chunk_data_size, source, chunk_header->chunk_sz, cur_block);
       if (chunk_data_size != 0) {
-        if (ret < 0) {
-          verbose_error(s->verbose, ret, "skip block at %" PRId64, offset);
-          return ret;
-        }
+        verbose_error(s->verbose, ret, "skip block at %" PRId64, offset);
+        return -EINVAL;
       }
       return chunk_header->chunk_sz;
     default:

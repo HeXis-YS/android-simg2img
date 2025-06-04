@@ -312,18 +312,11 @@ static int write_sparse_data_chunk(struct output_file* out, unsigned int len, vo
   return 0;
 }
 
-int write_sparse_end_chunk(struct output_file* out) {
-  chunk_header_t chunk_header;
-  int ret;
-
-  return 0;
-}
-
 static struct sparse_file_ops sparse_file_ops = {
     .write_data_chunk = write_sparse_data_chunk,
     .write_fill_chunk = write_sparse_fill_chunk,
     .write_skip_chunk = write_sparse_skip_chunk,
-    .write_end_chunk = write_sparse_end_chunk,
+    .write_end_chunk = NULL,
 };
 
 static int write_normal_data_chunk(struct output_file* out, unsigned int len, void* data) {
@@ -381,7 +374,6 @@ static struct sparse_file_ops normal_file_ops = {
 };
 
 void output_file_close(struct output_file* out) {
-  out->sparse_ops->write_end_chunk(out);
   out->ops->close(out);
 }
 

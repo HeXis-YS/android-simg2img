@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
       }
     }
 
-    s = sparse_file_import(in, true, false);
+    s = sparse_file_import(in, true);
     if (!s) {
       fprintf(stderr, "Failed to read sparse file\n");
       exit(-1);
@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
       exit(EXIT_FAILURE);
     }
 
-    if (sparse_file_write(s, out, false, false) < 0) {
+    if (sparse_file_write(s, out, false) < 0) {
       fprintf(stderr, "Cannot write output file\n");
       exit(-1);
     }

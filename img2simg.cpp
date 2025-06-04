@@ -93,13 +93,13 @@ int main(int argc, char* argv[]) {
   }
 
   sparse_file_verbose(s);
-  ret = sparse_file_read(s, in, false, false);
+  ret = sparse_file_read(s, in, false);
   if (ret) {
     fprintf(stderr, "Failed to read file\n");
     exit(-1);
   }
 
-  ret = sparse_file_write(s, out, true, false);
+  ret = sparse_file_write(s, out, true);
   if (ret) {
     fprintf(stderr, "Failed to write sparse file\n");
     exit(-1);
